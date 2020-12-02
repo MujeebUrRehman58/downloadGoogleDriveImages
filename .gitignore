@@ -1,0 +1,7 @@
+.idea
+venv
+env
+src/credentials.json
+src/token.pickle
+src/imagesToUpload
+src/downloads
