@@ -57,7 +57,7 @@ def main():
     if folder and folder[0].get('name') == folder_name:
         folder_id = folder[0].get('id')
         while True:
-            response = drive_service.files().list(q="mimeType='image/jpeg' "
+            response = drive_service.files().list(q="mimeType='image/png' "
                                                     f"and '{folder_id}' in parents "
                                                     f"and ({keywords})",
                                                   spaces='drive',
