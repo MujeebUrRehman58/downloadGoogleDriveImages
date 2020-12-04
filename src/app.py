@@ -4,6 +4,7 @@ import io
 import pickle
 from os import path
 from os import makedirs
+import re
 
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
@@ -47,7 +48,7 @@ def main():
         for line in file:
             keywords.append(f"name contains '{line.strip()}'")
     keywords = ' or '.join(keywords)
-    folder_name = 'test folder for download images project'
+    folder_name = 'Design from all GDs'
     response = drive_service.files().list(q="mimeType='application/vnd.google-apps.folder' "
                                             f"and name = '{folder_name}'",
                                           spaces='drive',
@@ -63,7 +64,7 @@ def main():
                                                   fields='nextPageToken, incompleteSearch, files(id, parents, name)',
                                                   pageToken=page_token).execute()
             for file in response.get('files', []):
-                file_name = file.get('name')
+                file_name = file.get('name', '').translate({ord(c): " " for c in "!@#$%^&*()[]{};:,./<>?\|`~-=_+"})
                 file_id = file.get('id')
                 request = drive_service.files().get_media(fileId=file_id)
                 fh = io.FileIO(f"{PATH}/downloads/{file_name}", 'wb')
