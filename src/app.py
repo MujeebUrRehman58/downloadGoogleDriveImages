@@ -12,6 +12,7 @@ from google.auth.transport.requests import Request
 
 # If modifying these scopes, delete the file token.pickle.
 SCOPES = ['https://www.googleapis.com/auth/drive']
+PATH = path.dirname(__file__)
 
 
 def main():
@@ -22,8 +23,8 @@ def main():
     # The file token.pickle stores the user's access and refresh tokens, and is
     # created automatically when the authorization flow completes for the first
     # time.
-    if path.exists('token.pickle'):
-        with open('token.pickle', 'rb') as token:
+    if path.exists(f'{PATH}/token.pickle'):
+        with open(f'{PATH}/token.pickle', 'rb') as token:
             creds = pickle.load(token)
     # If there are no (valid) credentials available, let the user log in.
     if not creds or not creds.valid:
@@ -31,42 +32,50 @@ def main():
             creds.refresh(Request())
         else:
             flow = InstalledAppFlow.from_client_secrets_file(
-                'credentials.json', SCOPES)
+                f'{PATH}/credentials.json', SCOPES)
             creds = flow.run_local_server(port=0)
         # Save the credentials for the next run
-        with open('token.pickle', 'wb') as token:
+        with open(f'{PATH}/token.pickle', 'wb') as token:
             pickle.dump(creds, token)
 
     drive_service = build('drive', 'v3', credentials=creds)
 
     page_token = None
-    makedirs('downloads/', exist_ok=True)
+    makedirs(f'{PATH}/downloads/', exist_ok=True)
     keywords = []
-    with open('keywords.txt') as file:
+    with open(f'{PATH}/keywords.txt') as file:
         for line in file:
             keywords.append(f"name contains '{line.strip()}'")
     keywords = ' or '.join(keywords)
-    while True:
-        response = drive_service.files().list(q="(mimeType='image/jpeg' "
-                                                "or mimeType='image/png') "
-                                                f"and ({keywords})",
-                                              spaces='drive',
-                                              fields='nextPageToken, files(id, name)',
-                                              pageToken=page_token).execute()
-        for file in response.get('files', []):
-            file_name = file.get('name')
-            file_id = file.get('id')
-            request = drive_service.files().get_media(fileId=file_id)
-            fh = io.FileIO(f"downloads/{file_name}", 'wb')
-            downloader = MediaIoBaseDownload(fh, request)
-            done = False
-            print(f"Downloading {file_name}")
-            while done is False:
-                status, done = downloader.next_chunk()
-                print("Progress %d%%" % int(status.progress() * 100))
-        page_token = response.get('nextPageToken', None)
-        if page_token is None:
-            break
+    folder_name = 'test folder for download images project'
+    response = drive_service.files().list(q="mimeType='application/vnd.google-apps.folder' "
+                                            f"and name = '{folder_name}'",
+                                          spaces='drive',
+                                          fields='nextPageToken, files(id, name)').execute()
+    folder = response.get('files', [])
+    if folder and folder[0].get('name') == folder_name:
+        folder_id = folder[0].get('id')
+        while True:
+            response = drive_service.files().list(q="mimeType='image/jpeg' "
+                                                    f"and '{folder_id}' in parents "
+                                                    f"and ({keywords})",
+                                                  spaces='drive',
+                                                  fields='nextPageToken, incompleteSearch, files(id, parents, name)',
+                                                  pageToken=page_token).execute()
+            for file in response.get('files', []):
+                file_name = file.get('name')
+                file_id = file.get('id')
+                request = drive_service.files().get_media(fileId=file_id)
+                fh = io.FileIO(f"{PATH}/downloads/{file_name}", 'wb')
+                downloader = MediaIoBaseDownload(fh, request)
+                done = False
+                print(f"Downloading {file_name}")
+                while done is False:
+                    status, done = downloader.next_chunk()
+                    print("Progress %d%%" % int(status.progress() * 100))
+            page_token = response.get('nextPageToken', None)
+            if page_token is None:
+                break
 
 
 if __name__ == '__main__':
