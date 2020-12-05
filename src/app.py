@@ -4,7 +4,6 @@ import io
 import pickle
 from os import path
 from os import makedirs
-import re
 
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
@@ -14,6 +13,13 @@ from google.auth.transport.requests import Request
 # If modifying these scopes, delete the file token.pickle.
 SCOPES = ['https://www.googleapis.com/auth/drive']
 PATH = path.dirname(__file__)
+
+
+def get_sub_folders_ids(folder_id, folders):
+    temp_list = [f['id'] for f in folders if folder_id in f.get('parents', [])]
+    for sub_folder_id in temp_list:
+        yield sub_folder_id
+        yield from get_sub_folders_ids(sub_folder_id, folders)
 
 
 def main():
@@ -49,34 +55,52 @@ def main():
             keywords.append(f"name contains '{line.strip()}'")
     keywords = ' or '.join(keywords)
     folder_name = 'Design from all GDs'
-    response = drive_service.files().list(q="mimeType='application/vnd.google-apps.folder' "
-                                            f"and name = '{folder_name}'",
-                                          spaces='drive',
-                                          fields='nextPageToken, files(id, name)').execute()
-    folder = response.get('files', [])
-    if folder and folder[0].get('name') == folder_name:
-        folder_id = folder[0].get('id')
-        while True:
-            response = drive_service.files().list(q="mimeType='image/png' "
-                                                    f"and '{folder_id}' in parents "
-                                                    f"and ({keywords})",
-                                                  spaces='drive',
-                                                  fields='nextPageToken, incompleteSearch, files(id, parents, name)',
-                                                  pageToken=page_token).execute()
-            for file in response.get('files', []):
-                file_name = file.get('name', '').translate({ord(c): " " for c in "!@#$%^&*()[]{};:,./<>?\|`~-=_+"})
-                file_id = file.get('id')
-                request = drive_service.files().get_media(fileId=file_id)
-                fh = io.FileIO(f"{PATH}/downloads/{file_name}", 'wb')
-                downloader = MediaIoBaseDownload(fh, request)
-                done = False
-                print(f"Downloading {file_name}")
-                while done is False:
-                    status, done = downloader.next_chunk()
-                    print("Progress %d%%" % int(status.progress() * 100))
-            page_token = response.get('nextPageToken', None)
-            if page_token is None:
-                break
+    folders = []
+    while True:
+        response = drive_service.files().list(
+            q="mimeType='application/vnd.google-apps.folder' and trashed=false ",
+            spaces='drive',
+            fields='nextPageToken, incompleteSearch, files(id, parents, name)',
+            pageToken=page_token).execute()
+        folders += response.get('files', [])
+        page_token = response.get('nextPageToken', None)
+        if page_token is None:
+            break
+
+    root_folder_id = [f['id'] for f in folders if folder_name == f['name']]
+    if not root_folder_id:
+        return print(f'No folder found with name: "{folder_name}", please check spelling.')
+    root_folder_id = root_folder_id[0]
+    folder_ids = [root_folder_id]
+    for f_id in get_sub_folders_ids(root_folder_id, folders):
+        folder_ids.append(f_id)
+
+    folder_ids_query = []
+    for f_id in folder_ids:
+        folder_ids_query.append(f"'{f_id}' in parents")
+    folder_ids_query = ' or '.join(folder_ids_query)
+    while True:
+        response = drive_service.files().list(q="mimeType='image/png' "
+                                                f"and ({folder_ids_query}) "
+                                                f"and ({keywords})",
+                                              spaces='drive',
+                                              fields='nextPageToken, incompleteSearch, files(id, parents, name)',
+                                              pageToken=page_token).execute()
+        for file in response.get('files', []):
+            file_name = file.get('name', '').translate({ord(c): " " for c in "!@#$%^&*()[]{};:,/<>?\|`~=+"})
+            file_id = file.get('id')
+            request = drive_service.files().get_media(fileId=file_id)
+            fh = io.FileIO(f"{PATH}/downloads/{file_name}", 'wb')
+            downloader = MediaIoBaseDownload(fh, request)
+            done = False
+            print(f"Downloading {file_name}")
+            while done is False:
+                status, done = downloader.next_chunk()
+                print("Progress %d%%" % int(status.progress() * 100))
+
+        page_token = response.get('nextPageToken', None)
+        if page_token is None:
+            break
 
 
 if __name__ == '__main__':
