@@ -15,13 +15,6 @@ SCOPES = ['https://www.googleapis.com/auth/drive']
 PATH = path.dirname(__file__)
 
 
-def get_sub_folders_ids(folder_id, folders):
-    temp_list = [f['id'] for f in folders if folder_id in f.get('parents', [])]
-    for sub_folder_id in temp_list:
-        yield sub_folder_id
-        yield from get_sub_folders_ids(sub_folder_id, folders)
-
-
 def main():
     """Shows basic usage of the Drive v3 API.
     Prints the names and ids of the first 10 files the user has access to.
@@ -54,37 +47,11 @@ def main():
         for line in file:
             keywords.append(f"name contains '{line.strip()}'")
     keywords = ' or '.join(keywords)
-    folder_name = 'Design from all GDs'
-    folders = []
     while True:
-        response = drive_service.files().list(
-            q="mimeType='application/vnd.google-apps.folder' and trashed=false ",
-            spaces='drive',
-            fields='nextPageToken, incompleteSearch, files(id, parents, name)',
-            pageToken=page_token).execute()
-        folders += response.get('files', [])
-        page_token = response.get('nextPageToken', None)
-        if page_token is None:
-            break
-
-    root_folder_id = [f['id'] for f in folders if folder_name == f['name']]
-    if not root_folder_id:
-        return print(f'No folder found with name: "{folder_name}", please check spelling.')
-    root_folder_id = root_folder_id[0]
-    folder_ids = [root_folder_id]
-    for f_id in get_sub_folders_ids(root_folder_id, folders):
-        folder_ids.append(f_id)
-
-    folder_ids_query = []
-    for f_id in folder_ids:
-        folder_ids_query.append(f"'{f_id}' in parents")
-    folder_ids_query = ' or '.join(folder_ids_query)
-    while True:
-        response = drive_service.files().list(q="mimeType='image/png' "
-                                                f"and ({folder_ids_query}) "
+        response = drive_service.files().list(q="mimeType='image/png'"
                                                 f"and ({keywords})",
                                               spaces='drive',
-                                              fields='nextPageToken, incompleteSearch, files(id, parents, name)',
+                                              fields='nextPageToken, files(id, name)',
                                               pageToken=page_token).execute()
         for file in response.get('files', []):
             file_name = file.get('name', '').translate({ord(c): " " for c in "!@#$%^&*()[]{};:,/<>?\|`~=+"})
